@@ -13,7 +13,19 @@ class Pet:
     type: str
     age: int
     # Calculated automatically from scheduled tasks — not set by the user
+    #change5: maintenance level is now calculated based on the pet's scheduled tasks, so it is initialized to a default value of 1 and
+    #updated by the update_maintenance_level method after schedule generation.
     maintenance_level: int = field(init=False, default=1)
+    tasks: List["Task"] = field(init=False, default_factory=list)
+
+    @property
+    def task_count(self) -> int:
+        """Return the number of tasks assigned to this pet."""
+        return len(self.tasks)
+
+    def add_task(self, task: "Task"):
+        """Assign a task directly to this pet."""
+        self.tasks.append(task)
 
     def edit_pet_info(self, name: str = None, type: str = None, age: int = None):
         """Update one or more fields on this pet."""
@@ -25,17 +37,7 @@ class Pet:
             self.age = age
 
     def update_maintenance_level(self, tasks: List["Task"]):
-        """
-        Recalculate maintenance_level based on the pet's scheduled tasks.
-
-        Scoring rules (target: 2 walks + 2 feeds = 4 tasks):
-          Base score = total required tasks completed (out of 4), minimum 1.
-          Groom/bath adds 1 full bonus point (max 5).
-            4 tasks + groom = 5  |  4 tasks = 4
-            3 tasks + groom = 4  |  3 tasks = 3
-            2 tasks + groom = 3  |  2 tasks = 2
-            1 task  + groom = 2  |  0-1 tasks = 1
-        """
+        """Score care quality 1–5 based on walks, feeds (target: 2 each), and groom (+1 bonus)."""
         walks  = sum(1 for t in tasks if "walk"  in t.task_name.lower())
         feeds  = sum(1 for t in tasks if "feed"  in t.task_name.lower())
         grooms = sum(1 for t in tasks if "groom" in t.task_name.lower())
@@ -58,13 +60,18 @@ class Pet:
 
 
 @dataclass
-#Changes1: removed id attribute from Task class since it was not necessary and slightly 
+#Changes1: removed id attribute from Task class since it was not necessary and slightly
 # overcomplicated the system.
 class Task:
     task_name: str
     duration: int   # in minutes
     priority: int   # 1 (low) to 5 (high)
     pet_id: int     # which pet this task belongs to
+    status: str = field(init=False, default="pending")  # "pending" or "complete"
+
+    def mark_complete(self):
+        """Mark this task as completed."""
+        self.status = "complete"
 
     def edit_duration(self, duration: int):
         """Update how long this task takes (in minutes)."""
@@ -89,6 +96,7 @@ class Schedule:
     MINUTES_IN_DAY = 1440  # 24 hours × 60 minutes
 
     def __init__(self):
+        """Initialize an empty 24-hour schedule with no tasks or blocked times."""
         # Each entry is a (start_minute, end_minute) pair representing a blocked range
         self.blocked_times: List[tuple] = []
         self.tasks: List[Task] = []
@@ -97,14 +105,7 @@ class Schedule:
 
     @staticmethod
     def _parse_time(time_str: str) -> int:
-        """
-        Convert a user-facing time string to minutes from midnight.
-
-        Accepted formats (case-insensitive, space optional):
-            "5pm"  "5:00pm"  "5:30 PM"  "12:00am"  "12:30AM"
-        Returns minutes from midnight (0–1439).
-        Raises ValueError for unrecognized input.
-        """
+        """Parse a 12-hour time string (e.g. '5pm', '8:30am') into minutes from midnight."""
         import re
         time_str = time_str.strip().lower().replace(" ", "")
         match = re.fullmatch(r"(\d{1,2})(?::(\d{2}))?(am|pm)", time_str)
@@ -139,10 +140,7 @@ class Schedule:
                         if v.task_name != task_name}
 
     def block_time(self, start: int, end: int):
-        """
-        Mark a time range as unavailable (e.g. owner at work).
-        start / end are minutes from midnight: 0 = 12:00 AM, 1440 = 12:00 AM next day.
-        """
+        """Mark a time range (in minutes from midnight) as unavailable for scheduling."""
         self.blocked_times.append((start, end))
 
     def _slot_is_free(self, start: int, duration: int) -> bool:
@@ -160,12 +158,7 @@ class Schedule:
         return True
 
     def generate_schedule(self) -> dict:
-        """
-        Fit all tasks into the 24-hour block.
-        Tasks are placed in priority order (highest first), earliest available slot,
-        checked every 15 minutes.
-        Returns an ordered dict of { start_minute: Task }.
-        """
+        """Place all tasks into the 24-hour block by priority, avoiding blocked windows."""
         self._placed = {}
         for task in sorted(self.tasks, key=lambda t: t.priority, reverse=True):
             for minute in range(0, self.MINUTES_IN_DAY, 15):
@@ -204,6 +197,7 @@ class Schedule:
 #specific plans (e.g. work, gym, dinner). This is important for the schedule generation to take into account the user's availability when scheduling pet care tasks.
 class User:
     def __init__(self, id: int, name: str):
+        """Initialize a user with a name, an empty schedule, and no pets."""
         self.id: int = id
         self.name: str = name
         self.user_schedule: Schedule = Schedule()
@@ -230,27 +224,13 @@ class User:
         self.user_pets = [p for p in self.user_pets if p.id != pet_id]
 
     def update_pet_maintenance(self):
-        """
-        Recalculate maintenance_level for every pet based on their
-        currently placed schedule tasks. Call this after generate_schedule().
-        """
+        """Recalculate maintenance_level for all pets based on their placed schedule tasks."""
         for pet in self.user_pets:
             tasks = self.user_schedule.get_tasks_for_pet(pet.id)
             pet.update_maintenance_level(tasks)
 
     def add_constraint(self, label: str, start_time: str, end_time: str):
-        """
-        Block off a time range in the user's schedule for a named plan.
-
-        Parameters
-        ----------
-        label      : str — description of the plan, e.g. 'Work', 'Gym', 'Dinner'
-        start_time : str — start time, e.g. '9am', '1:30pm'
-        end_time   : str — end time,   e.g. '5pm', '2:00pm'
-
-        Converts the human-readable times to minutes and passes them to
-        the schedule so generate_schedule() avoids that window.
-        """
+        """Block off a named time window (e.g. 'Work', '9am'–'5pm') in the user's schedule."""
         start_min = Schedule._parse_time(start_time)
         end_min   = Schedule._parse_time(end_time)
         if end_min <= start_min:
@@ -262,45 +242,3 @@ class User:
               f"to {Schedule._to_time(end_min)}")
 
 
-# ---------------------------------------------------------------------------
-# Quick smoke-test
-# ---------------------------------------------------------------------------
-
-if __name__ == "__main__":
-    # Create a user
-    owner = User(id=1, name="Alex")
-
-    # Create pets (maintenance_level is calculated automatically)
-    dog = Pet(id=1, name="Buddy",    type="Dog", age=3)
-    cat = Pet(id=2, name="Whiskers", type="Cat", age=5)
-    owner.add_pet(dog)
-    owner.add_pet(cat)
-
-    # Add user constraints (plans that block time in the schedule)
-    owner.add_constraint("Work",   start_time="9:00am", end_time="5:00pm")
-    owner.add_constraint("Dinner", start_time="6:30pm", end_time="7:30pm")
-
-    # Create tasks (duration in minutes)
-    walk  = Task(task_name="Morning Walk",  duration=30, priority=5, pet_id=dog.id)
-    feed  = Task(task_name="Feed Whiskers", duration=10, priority=4, pet_id=cat.id)
-    groom = Task(task_name="Groom Buddy",   duration=20, priority=3, pet_id=dog.id)
-
-    owner.user_schedule.add_task(walk)
-    owner.user_schedule.add_task(feed)
-    owner.user_schedule.add_task(groom)
-
-    # Print user & pet info
-    print(owner.view_user_info())
-    print(dog.view_pet_info())
-    print(cat.view_pet_info())
-
-    # Generate schedule, then recalculate maintenance levels from placed tasks
-    owner.user_schedule.generate_schedule()
-    owner.update_pet_maintenance()
-
-    print("\n--- Daily Schedule (12 AM – 12 AM) ---")
-    owner.user_schedule.view_schedule()
-
-    print("\n--- Pet Maintenance Levels (post-schedule) ---")
-    print(dog.view_pet_info())
-    print(cat.view_pet_info())
