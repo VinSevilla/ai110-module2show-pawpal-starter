@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
-from typing import List
+from datetime import date, timedelta
+from typing import List, Optional
 
 
 # ---------------------------------------------------------------------------
@@ -68,12 +69,31 @@ class Task:
     priority: int   # 1 (low) to 5 (high)
     pet_id: int     # which pet this task belongs to
     status: str = field(init=False, default="pending")  # "pending" or "complete"
-    recurring: bool = False       # True = repeat this task throughout the day
-    repeat_every: int = 0         # minutes between each recurrence (0 = not recurring)
+    recurring: bool = False           # True = repeat this task throughout the day
+    repeat_every: int = 0             # minutes between each recurrence (0 = not recurring)
+    frequency: str = "once"           # "once", "daily", or "weekly"
+    due_date: Optional[date] = None   # date this task is due; defaults to today if not set
 
-    def mark_complete(self):
-        """Mark this task as completed."""
+    def mark_complete(self) -> Optional["Task"]:
+        """Mark this task complete; returns a new Task for the next occurrence if daily/weekly."""
         self.status = "complete"
+        base_date = self.due_date or date.today()
+
+        if self.frequency == "daily":
+            next_date = base_date + timedelta(days=1)
+        elif self.frequency == "weekly":
+            next_date = base_date + timedelta(weeks=1)
+        else:
+            return None  # "once" tasks don't recur
+
+        return Task(
+            task_name=self.task_name,
+            duration=self.duration,
+            priority=self.priority,
+            pet_id=self.pet_id,
+            frequency=self.frequency,
+            due_date=next_date,
+        )
 
     def edit_duration(self, duration: int):
         """Update how long this task takes (in minutes)."""
@@ -194,6 +214,36 @@ class Schedule:
                 self._unplaced.append(task)
         return dict(sorted(self._placed.items()))
 
+    def add_task_at(self, task: Task, time_str: str):
+        """Force-place a task at a specific time without conflict checking (use detect_conflicts after)."""
+        start_min = self._parse_time(time_str)
+        self.tasks.append(task)
+        self._placed[start_min] = task
+
+    def detect_conflicts(self) -> List[str]:
+        """Scan placed tasks for overlapping time slots; return warning strings (empty = no conflicts)."""
+        warnings = []
+        items = sorted(self._placed.items())   # [(start_min, task), ...]
+
+        for i in range(len(items)):
+            a_start, task_a = items[i]
+            a_end = a_start + task_a.duration
+
+            for j in range(i + 1, len(items)):
+                b_start, task_b = items[j]
+                b_end = b_start + task_b.duration
+
+                # Two ranges overlap when one starts before the other ends
+                if a_start < b_end and b_start < a_end:
+                    warnings.append(
+                        f"WARNING: '{task_a.task_name}' "
+                        f"({self._to_time(a_start)}–{self._to_time(a_end)}) "
+                        f"overlaps with '{task_b.task_name}' "
+                        f"({self._to_time(b_start)}–{self._to_time(b_end)})"
+                    )
+
+        return warnings
+
     def sort_by_time(self) -> List[tuple]:
         """Return placed tasks as (start_min, task) pairs sorted chronologically using a lambda key."""
         return sorted(
@@ -209,6 +259,16 @@ class Schedule:
         if status is not None:
             results = [t for t in results if t.status == status]
         return results
+
+    def complete_task(self, task_name: str) -> Optional[Task]:
+        """Mark a placed task complete and auto-add its next occurrence if daily or weekly."""
+        for task in self._placed.values():
+            if task.task_name == task_name:
+                next_task = task.mark_complete()
+                if next_task:
+                    self.tasks.append(next_task)  # queued for the next generate_schedule()
+                return next_task
+        return None
 
     def check_conflicts(self) -> List[Task]:
         """Return tasks that could not be placed after the last generate_schedule() call."""

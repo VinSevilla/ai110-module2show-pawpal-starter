@@ -6,81 +6,54 @@ if __name__ == "__main__":
     # Setup
     # -----------------------------------------------------------------------
     owner = User(id=1, name="Alex")
-
     dog = Pet(id=1, name="Buddy",    type="Dog", age=3)
     cat = Pet(id=2, name="Whiskers", type="Cat", age=5)
     owner.add_pet(dog)
     owner.add_pet(cat)
 
-    owner.add_constraint("Work", start_time="9:00am", end_time="5:00pm")
+    schedule = owner.user_schedule
 
     # -----------------------------------------------------------------------
-    # Add tasks OUT OF ORDER to prove sort_by_time() fixes the display
-    # (Evening tasks added before morning tasks intentionally)
+    # Force two tasks at the same time to create a conflict
+    # Morning Walk (30 min) and Feed Whiskers (10 min) both start at 8:00 AM
     # -----------------------------------------------------------------------
-    evening_walk = Task(task_name="Evening Walk",   duration=30, priority=3, pet_id=dog.id)
-    night_feed   = Task(task_name="Night Feed Cat", duration=10, priority=2, pet_id=cat.id)
-    morning_walk = Task(task_name="Morning Walk",   duration=30, priority=5, pet_id=dog.id)
-    morning_feed = Task(task_name="Morning Feed",   duration=10, priority=5, pet_id=cat.id)
-    groom        = Task(task_name="Groom Buddy",    duration=20, priority=4, pet_id=dog.id)
-    evening_feed = Task(task_name="Evening Feed",   duration=10, priority=3, pet_id=cat.id,
-                        recurring=False)
+    walk = Task(task_name="Morning Walk",   duration=30, priority=5, pet_id=dog.id)
+    feed = Task(task_name="Feed Whiskers",  duration=10, priority=5, pet_id=cat.id)
+    groom = Task(task_name="Groom Buddy",   duration=20, priority=4, pet_id=dog.id)
 
-    # Add in deliberately jumbled order
-    owner.user_schedule.add_task(evening_walk)   # added first, should appear last
-    owner.user_schedule.add_task(night_feed)
-    owner.user_schedule.add_task(morning_walk)   # added third, should appear first
-    owner.user_schedule.add_task(morning_feed)
-    owner.user_schedule.add_task(groom)
-    owner.user_schedule.add_task(evening_feed)
+    # add_task_at() bypasses conflict checking so we can deliberately overlap
+    schedule.add_task_at(walk,  "8:00am")   # 8:00 AM – 8:30 AM
+    schedule.add_task_at(feed,  "8:15am")   # 8:15 AM – 8:25 AM  ← overlaps walk
+    schedule.add_task_at(groom, "9:00am")   # 9:00 AM – 9:20 AM  ← no overlap
 
     # -----------------------------------------------------------------------
-    # Generate schedule
+    # Print the raw schedule before conflict check
     # -----------------------------------------------------------------------
-    owner.user_schedule.generate_schedule()
-    owner.update_pet_maintenance()
-
-    # -----------------------------------------------------------------------
-    # sort_by_time() — tasks in chronological order regardless of add order
-    # -----------------------------------------------------------------------
-    print("=== Full Schedule (sorted by time) ===")
-    for start_min, task in owner.user_schedule.sort_by_time():
+    print("=== Schedule (before conflict check) ===")
+    for start_min, task in schedule.sort_by_time():
         end_min = start_min + task.duration
-        print(
-            f"  {Schedule._to_time(start_min)} – {Schedule._to_time(end_min)}"
-            f"  [{task.priority}★] {task.task_name}  ({task.status})"
-        )
+        print(f"  {Schedule._to_time(start_min)} – {Schedule._to_time(end_min)}  {task.task_name}")
 
     # -----------------------------------------------------------------------
-    # filter_tasks_by_pet_name() — show only Buddy's tasks
+    # Lightweight conflict detection — warns, never crashes
     # -----------------------------------------------------------------------
-    print("\n=== Buddy's Tasks Only ===")
-    for task in owner.filter_tasks_by_pet_name(pet_name="Buddy"):
-        print(f"  {task.task_name} ({task.duration} min, priority {task.priority})")
-
-    # -----------------------------------------------------------------------
-    # filter_tasks(status=) — mark one task complete, then show pending only
-    # -----------------------------------------------------------------------
-    morning_walk.mark_complete()
-
-    print("\n=== Pending Tasks Only (after marking Morning Walk complete) ===")
-    for task in owner.user_schedule.filter_tasks(status="pending"):
-        print(f"  {task.task_name}  [{task.status}]")
-
-    # -----------------------------------------------------------------------
-    # check_conflicts() — report anything that didn't fit
-    # -----------------------------------------------------------------------
-    conflicts = owner.user_schedule.check_conflicts()
-    print("\n=== Conflicts (tasks that couldn't be placed) ===")
+    print("\n=== Conflict Detection ===")
+    conflicts = schedule.detect_conflicts()
     if conflicts:
-        for task in conflicts:
-            print(f"  ✗ {task.task_name}")
+        for warning in conflicts:
+            print(f"  {warning}")
     else:
-        print("  None — all tasks fit in the schedule.")
+        print("  No conflicts found.")
 
     # -----------------------------------------------------------------------
-    # Maintenance levels (auto-calculated from placed tasks)
+    # Same pet, same time — more specific scenario
     # -----------------------------------------------------------------------
-    print("\n=== Pet Maintenance Levels ===")
-    print(dog.view_pet_info())
-    print(cat.view_pet_info())
+    print("\n--- Same-pet overlap scenario ---")
+    schedule2 = Schedule()
+    walk2  = Task(task_name="Morning Walk",   duration=45, priority=5, pet_id=dog.id)
+    walk3  = Task(task_name="Training Run",   duration=30, priority=4, pet_id=dog.id)
+    schedule2.add_task_at(walk2, "7:00am")   # 7:00 – 7:45 AM
+    schedule2.add_task_at(walk3, "7:30am")   # 7:30 – 8:00 AM  ← overlaps walk2 (same pet)
+
+    for warning in schedule2.detect_conflicts():
+        print(f"  {warning}")

@@ -22,6 +22,15 @@ Your final app should:
 - Display the plan clearly (and ideally explain the reasoning)
 - Include tests for the most important scheduling behaviors
 
+## Smarter Scheduling
+
+Beyond basic task placement, the scheduler includes several improvements that make it more useful for a real pet owner:
+
+- **Sort by time** — `sort_by_time()` returns the placed schedule in chronological order using a lambda key, regardless of the order tasks were added.
+- **Filter by pet or status** — `filter_tasks()` and `filter_tasks_by_pet_name()` let you narrow the schedule to one pet or show only pending/completed tasks.
+- **Recurring tasks** — set `frequency="daily"` or `frequency="weekly"` on a `Task`. When `complete_task()` is called, it automatically creates the next occurrence with the correct due date using Python's `datetime.timedelta`.
+- **Conflict detection** — `detect_conflicts()` scans the placed schedule for overlapping time slots and returns human-readable warning messages without crashing. An early-exit optimization keeps it fast for typical daily schedules.
+
 ## Getting started
 
 ### Setup
