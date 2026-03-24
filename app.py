@@ -1,88 +1,164 @@
 import streamlit as st
+from pawpal_system import User, Pet, Task, Schedule
 
 st.set_page_config(page_title="PawPal+", page_icon="🐾", layout="centered")
-
 st.title("🐾 PawPal+")
 
-st.markdown(
-    """
-Welcome to the PawPal+ starter app.
+# ---------------------------------------------------------------------------
+# Session state — initialize once, survives reruns
+# ---------------------------------------------------------------------------
+if "owner" not in st.session_state:
+    st.session_state.owner = None
 
-This file is intentionally thin. It gives you a working Streamlit app so you can start quickly,
-but **it does not implement the project logic**. Your job is to design the system and build it.
+if "next_pet_id" not in st.session_state:
+    st.session_state.next_pet_id = 1
 
-Use this app as your interactive demo once your backend classes/functions exist.
-"""
-)
+# ---------------------------------------------------------------------------
+# Owner setup
+# ---------------------------------------------------------------------------
+st.subheader("Owner")
+owner_name = st.text_input("Your name", value="Jordan")
 
-with st.expander("Scenario", expanded=True):
-    st.markdown(
-        """
-**PawPal+** is a pet care planning assistant. It helps a pet owner plan care tasks
-for their pet(s) based on constraints like time, priority, and preferences.
+if st.button("Create / Update Owner"):
+    if st.session_state.owner is None:
+        # First time — create a new User and store it in session state
+        st.session_state.owner = User(id=1, name=owner_name)
+    else:
+        # Already exists — just update the name in place
+        st.session_state.owner.edit_user_info(owner_name)
+    st.success(f"Owner set to: {owner_name}")
 
-You will design and implement the scheduling logic and connect it to this Streamlit UI.
-"""
-    )
+owner = st.session_state.owner
 
-with st.expander("What you need to build", expanded=True):
-    st.markdown(
-        """
-At minimum, your system should:
-- Represent pet care tasks (what needs to happen, how long it takes, priority)
-- Represent the pet and the owner (basic info and preferences)
-- Build a plan/schedule for a day that chooses and orders tasks based on constraints
-- Explain the plan (why each task was chosen and when it happens)
-"""
-    )
+if owner is None:
+    st.info("Create an owner above to get started.")
+    st.stop()  # Don't render anything below until an owner exists
 
 st.divider()
 
-st.subheader("Quick Demo Inputs (UI only)")
-owner_name = st.text_input("Owner name", value="Jordan")
-pet_name = st.text_input("Pet name", value="Mochi")
-species = st.selectbox("Species", ["dog", "cat", "other"])
+# ---------------------------------------------------------------------------
+# Add a Pet  →  owner.add_pet(Pet(...))
+# ---------------------------------------------------------------------------
+st.subheader("Add a Pet")
 
-st.markdown("### Tasks")
-st.caption("Add a few tasks. In your final version, these should feed into your scheduler.")
+with st.form("add_pet_form"):
+    pet_name = st.text_input("Pet name", value="Mochi")
+    pet_type = st.selectbox("Species", ["Dog", "Cat", "Other"])
+    pet_age  = st.number_input("Age", min_value=0, max_value=30, value=2)
+    pet_submitted = st.form_submit_button("Add Pet")
 
-if "tasks" not in st.session_state:
-    st.session_state.tasks = []
-
-col1, col2, col3 = st.columns(3)
-with col1:
-    task_title = st.text_input("Task title", value="Morning walk")
-with col2:
-    duration = st.number_input("Duration (minutes)", min_value=1, max_value=240, value=20)
-with col3:
-    priority = st.selectbox("Priority", ["low", "medium", "high"], index=2)
-
-if st.button("Add task"):
-    st.session_state.tasks.append(
-        {"title": task_title, "duration_minutes": int(duration), "priority": priority}
+if pet_submitted:
+    new_pet = Pet(
+        id=st.session_state.next_pet_id,
+        name=pet_name,
+        type=pet_type,
+        age=int(pet_age)
     )
+    owner.add_pet(new_pet)                  # <-- Pet class method
+    st.session_state.next_pet_id += 1
+    st.success(f"Added {pet_name} the {pet_type}!")
 
-if st.session_state.tasks:
-    st.write("Current tasks:")
-    st.table(st.session_state.tasks)
+# Show current pets — re-rendered every rerun from session_state.owner.user_pets
+if owner.user_pets:
+    st.write("**Your pets:**")
+    for p in owner.user_pets:
+        st.write(f"- {p.name} ({p.type}, age {p.age})  |  Maintenance: {p.maintenance_level}/5")
 else:
-    st.info("No tasks yet. Add one above.")
+    st.info("No pets yet — add one above.")
 
 st.divider()
 
-st.subheader("Build Schedule")
-st.caption("This button should call your scheduling logic once you implement it.")
+# ---------------------------------------------------------------------------
+# Block off the owner's time  →  owner.add_constraint(...)
+# ---------------------------------------------------------------------------
+st.subheader("Block Off Your Time")
 
-if st.button("Generate schedule"):
-    st.warning(
-        "Not implemented yet. Next step: create your scheduling logic (classes/functions) and call it here."
-    )
-    st.markdown(
-        """
-Suggested approach:
-1. Design your UML (draft).
-2. Create class stubs (no logic).
-3. Implement scheduling behavior.
-4. Connect your scheduler here and display results.
-"""
-    )
+with st.form("constraint_form"):
+    label      = st.text_input("Plan label (e.g. Work, Gym)", value="Work")
+    start_time = st.text_input("Start time (e.g. 9:00am)", value="9:00am")
+    end_time   = st.text_input("End time   (e.g. 5:00pm)", value="5:00pm")
+    constraint_submitted = st.form_submit_button("Add Constraint")
+
+if constraint_submitted:
+    try:
+        owner.add_constraint(label, start_time, end_time)   # <-- User class method
+        st.success(f"Blocked '{label}' from {start_time} to {end_time}.")
+    except ValueError as e:
+        st.error(str(e))
+
+st.divider()
+
+# ---------------------------------------------------------------------------
+# Add a Care Task  →  owner.user_schedule.add_task(Task(...))
+# ---------------------------------------------------------------------------
+st.subheader("Add a Care Task")
+
+if not owner.user_pets:
+    st.warning("Add a pet first before scheduling tasks.")
+else:
+    pet_map = {p.name: p for p in owner.user_pets}
+
+    with st.form("add_task_form"):
+        task_name    = st.text_input("Task name", value="Morning Walk")
+        duration     = st.number_input("Duration (minutes)", min_value=1, max_value=240, value=30)
+        priority     = st.slider("Priority (1 = low, 5 = high)", min_value=1, max_value=5, value=3)
+        selected_pet = st.selectbox("For which pet?", list(pet_map.keys()))
+        task_submitted = st.form_submit_button("Add Task")
+
+    if task_submitted:
+        pet = pet_map[selected_pet]
+        new_task = Task(
+            task_name=task_name,
+            duration=int(duration),
+            priority=priority,
+            pet_id=pet.id
+        )
+        owner.user_schedule.add_task(new_task)    # <-- Schedule class method
+        st.success(f"Task '{task_name}' added for {selected_pet}!")
+
+    # Show the unscheduled task pool
+    if owner.user_schedule.tasks:
+        id_to_name = {p.id: p.name for p in owner.user_pets}
+        st.write("**Task pool (not yet scheduled):**")
+        for t in owner.user_schedule.tasks:
+            st.write(
+                f"- [Priority {t.priority}] {t.task_name} "
+                f"({t.duration} min) — {id_to_name.get(t.pet_id, '?')}"
+            )
+
+st.divider()
+
+# ---------------------------------------------------------------------------
+# Generate Schedule  →  generate_schedule() + update_pet_maintenance()
+# ---------------------------------------------------------------------------
+st.subheader("Generate Daily Schedule")
+
+if st.button("Generate Schedule"):
+    if not owner.user_schedule.tasks:
+        st.warning("Add some tasks first.")
+    else:
+        owner.user_schedule.generate_schedule()     # <-- Schedule class method
+        owner.update_pet_maintenance()              # <-- User class method (updates maintenance_level)
+
+        placed = owner.user_schedule._placed
+        if placed:
+            st.success("Schedule generated!")
+            id_to_name = {p.id: p.name for p in owner.user_pets}
+            rows = [
+                {
+                    "Time": f"{Schedule._to_time(start)} – {Schedule._to_time(start + t.duration)}",
+                    "Task": t.task_name,
+                    "Duration (min)": t.duration,
+                    "Priority": t.priority,
+                    "Pet": id_to_name.get(t.pet_id, "?"),
+                    "Status": t.status,
+                }
+                for start, t in sorted(placed.items())
+            ]
+            st.table(rows)
+
+            st.write("**Updated Maintenance Levels:**")
+            for p in owner.user_pets:
+                st.write(f"- {p.name}: {p.maintenance_level}/5")
+        else:
+            st.warning("No tasks could be placed — all time slots may be blocked.")

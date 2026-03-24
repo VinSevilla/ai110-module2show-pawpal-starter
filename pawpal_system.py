@@ -68,6 +68,8 @@ class Task:
     priority: int   # 1 (low) to 5 (high)
     pet_id: int     # which pet this task belongs to
     status: str = field(init=False, default="pending")  # "pending" or "complete"
+    recurring: bool = False       # True = repeat this task throughout the day
+    repeat_every: int = 0         # minutes between each recurrence (0 = not recurring)
 
     def mark_complete(self):
         """Mark this task as completed."""
@@ -102,6 +104,8 @@ class Schedule:
         self.tasks: List[Task] = []
         # Filled by generate_schedule(): maps start_minute -> Task
         self._placed: dict = {}
+        # Tasks that couldn't fit anywhere after generate_schedule()
+        self._unplaced: List[Task] = []
 
     @staticmethod
     def _parse_time(time_str: str) -> int:
@@ -157,15 +161,58 @@ class Schedule:
                 return False
         return True
 
+    def _expand_recurring(self) -> List[Task]:
+        """Expand recurring tasks into repeated copies spaced by repeat_every minutes."""
+        expanded = []
+        for task in self.tasks:
+            expanded.append(task)
+            if task.recurring and task.repeat_every > 0:
+                offset = task.repeat_every
+                while offset + task.duration <= self.MINUTES_IN_DAY:
+                    copy = Task(
+                        task_name=task.task_name,
+                        duration=task.duration,
+                        priority=task.priority,
+                        pet_id=task.pet_id,
+                    )
+                    expanded.append(copy)
+                    offset += task.repeat_every
+        return expanded
+
     def generate_schedule(self) -> dict:
         """Place all tasks into the 24-hour block by priority, avoiding blocked windows."""
         self._placed = {}
-        for task in sorted(self.tasks, key=lambda t: t.priority, reverse=True):
+        self._unplaced = []
+        for task in sorted(self._expand_recurring(), key=lambda t: t.priority, reverse=True):
+            placed = False
             for minute in range(0, self.MINUTES_IN_DAY, 15):
                 if self._slot_is_free(minute, task.duration):
                     self._placed[minute] = task
+                    placed = True
                     break
+            if not placed:
+                self._unplaced.append(task)
         return dict(sorted(self._placed.items()))
+
+    def sort_by_time(self) -> List[tuple]:
+        """Return placed tasks as (start_min, task) pairs sorted chronologically using a lambda key."""
+        return sorted(
+            self._placed.items(),
+            key=lambda item: item[0]   # item[0] is start_minute (int); lower = earlier in the day
+        )
+
+    def filter_tasks(self, pet_id: int = None, status: str = None) -> List[Task]:
+        """Filter placed tasks by pet_id and/or completion status; omit a param to skip that filter."""
+        results = list(self._placed.values())
+        if pet_id is not None:
+            results = [t for t in results if t.pet_id == pet_id]
+        if status is not None:
+            results = [t for t in results if t.status == status]
+        return results
+
+    def check_conflicts(self) -> List[Task]:
+        """Return tasks that could not be placed after the last generate_schedule() call."""
+        return list(self._unplaced)
 
     def get_tasks_for_pet(self, pet_id: int) -> List[Task]:
         """Return all placed tasks that belong to a given pet."""
@@ -222,6 +269,16 @@ class User:
     def remove_pet(self, pet_id: int):
         """Remove a pet from this user's care by its ID."""
         self.user_pets = [p for p in self.user_pets if p.id != pet_id]
+
+    def filter_tasks_by_pet_name(self, pet_name: str = None, status: str = None) -> List[Task]:
+        """Filter placed tasks by pet name (string) and/or status; resolves name to id internally."""
+        pet_id = None
+        if pet_name is not None:
+            match = next((p for p in self.user_pets if p.name.lower() == pet_name.lower()), None)
+            if match is None:
+                return []
+            pet_id = match.id
+        return self.user_schedule.filter_tasks(pet_id=pet_id, status=status)
 
     def update_pet_maintenance(self):
         """Recalculate maintenance_level for all pets based on their placed schedule tasks."""
