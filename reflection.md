@@ -72,6 +72,8 @@ The scheduler considers time, priority, and user preferences. I decided priority
 
 - What behaviors did you test?
 - Why were these tests important?
+  I tested the scheduling logic to ensure task with higher priority were being placed earlier in the day whilst lower priority task landed in remaining free slots. I also tested that the time constraints were being respected and that tasks that could not fit within the constraints were being notified and unplaced. A third bheavior I tested was the ability to filter tasks by pet name and status, which was allowed the user to easily view and schedule tasks for a specefic pet.
+  These test were important because they verified the core functionality of the app, which was to generate a schedule that respected the users pets, constraints, and priorities.
 
 **b. Confidence**
 

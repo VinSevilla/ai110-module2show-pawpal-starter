@@ -47,21 +47,20 @@ python -m pytest -v
 
 ### What the tests cover
 
-| Test | Behavior verified |
-|---|---|
-| `test_mark_complete_changes_status` | Completing a task flips its status from `pending` to `complete` |
-| `test_add_task_increases_pet_task_count` | Adding tasks to a `Pet` increments `task_count` correctly |
-| `test_sort_by_time_returns_chronological_order` | `sort_by_time()` returns placed tasks earliest→latest regardless of insertion order |
-| `test_mark_complete_daily_task_creates_next_day_task` | Completing a `daily` task auto-generates a follow-up task due the next day |
-| `test_mark_complete_once_task_returns_none` | Completing a `once` task returns `None` — no infinite recurrence |
-| `test_detect_conflicts_flags_overlapping_tasks` | `detect_conflicts()` catches tasks with overlapping time windows |
-| `test_detect_conflicts_no_warning_for_sequential_tasks` | Back-to-back tasks (end == next start) are not falsely flagged as conflicts |
+| Test                                                    | Behavior verified                                                                   |
+| ------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `test_mark_complete_changes_status`                     | Completing a task flips its status from `pending` to `complete`                     |
+| `test_add_task_increases_pet_task_count`                | Adding tasks to a `Pet` increments `task_count` correctly                           |
+| `test_sort_by_time_returns_chronological_order`         | `sort_by_time()` returns placed tasks earliest→latest regardless of insertion order |
+| `test_mark_complete_daily_task_creates_next_day_task`   | Completing a `daily` task auto-generates a follow-up task due the next day          |
+| `test_mark_complete_once_task_returns_none`             | Completing a `once` task returns `None` — no infinite recurrence                    |
+| `test_detect_conflicts_flags_overlapping_tasks`         | `detect_conflicts()` catches tasks with overlapping time windows                    |
+| `test_detect_conflicts_no_warning_for_sequential_tasks` | Back-to-back tasks (end == next start) are not falsely flagged as conflicts         |
 
 ### Confidence Level
 
-**★★★★☆ (4/5)**
-
-The core scheduling behaviors — priority placement, chronological sorting, recurring task spawning, and conflict detection — are all verified and passing. One known limitation noted during testing: `add_task_at` uses a `dict` keyed by `start_min`, so two tasks force-placed at the *exact same minute* silently overwrite each other rather than raising a conflict. This edge case does not affect `generate_schedule()` (which avoids conflicts by design), but is worth a future fix for `add_task_at`.
+4/5
+All the main features I built — scheduling by priority, sorting tasks by time, repeating daily tasks, and catching overlapping tasks — are working and passing their tests. One thing I noticed while testing is that if you manually place two tasks at the exact same time using `add_task_at`, the second one just replaces the first instead of showing a warning. It doesn't break the normal schedule (which handles this automatically), but it's something I'd want to fix in a future version.
 
 ---
 

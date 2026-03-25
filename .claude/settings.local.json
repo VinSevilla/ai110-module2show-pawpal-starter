@@ -5,7 +5,8 @@
       "Bash(git commit:*)",
       "Bash(git push:*)",
       "Bash(python -m pytest tests/test_pawpal.py -v)",
-      "Bash(python main.py)"
+      "Bash(python main.py)",
+      "Bash(python -m pytest -v)"
     ]
   }
 }
