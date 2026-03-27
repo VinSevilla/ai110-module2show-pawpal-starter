@@ -64,7 +64,7 @@ The scheduler considers time, priority, and user preferences. I decided priority
 - Describe one moment where you did not accept an AI suggestion as-is.
 - How did you evaluate or verify what the AI suggested?
 
-## One moment where I did not accept an AI suggestion was how it handled priority and pet maintenance level. At first, the AI decided what was considered priority of a task based on the pet's maintenance level which was determined by the number of tasks that had been completed for that pet. Essentially, the more care a pet received, the higher the maintenance level of a pet (meaning its been well maintained) which automatically set proceeding task as a low priority. Practically I did not accept this suggestion because back to the medication example, if a pet needs medication regardless of how well maintained and how many task has been completed for that pet, it should be considered a high priority task. I verified this through test cases but primarily though internal logic and reasoning. After seeing the output of the schedule, I realized that the maintenance level was not a good indicator of priority and it made more sense for the user to determine themselves what is important or not.
+One moment where I did not accept an AI suggestion was how it handled priority and pet maintenance level. At first, the AI decided what was considered priority of a task based on the pet's maintenance level which was determined by the number of tasks that had been completed for that pet. Essentially, the more care a pet received, the higher the maintenance level of a pet (meaning its been well maintained) which automatically set proceeding task as a low priority. Practically I did not accept this suggestion because back to the medication example, if a pet needs medication regardless of how well maintained and how many task has been completed for that pet, it should be considered a high priority task. I verified this through test cases but primarily though internal logic and reasoning. After seeing the output of the schedule, I realized that the maintenance level was not a good indicator of priority and it made more sense for the user to determine themselves what is important or not.
 
 ## 4. Testing and Verification
 
@@ -80,6 +80,9 @@ The scheduler considers time, priority, and user preferences. I decided priority
 - How confident are you that your scheduler works correctly?
 - What edge cases would you test next if you had more time?
 
+4/5
+All the main features I built included to be tested are scheduling by priority, sorting tasks by time, repeating daily tasks, and catching overlapping tasks are working and passing their tests. One thing I noticed while testing is that if you manually place two tasks at the exact same time using add_task_at, the second one just replaces the first instead of showing a warning. It doesn't break the normal schedule (which handles this automatically), but it's something I'd want to fix in a future version.
+
 ---
 
 ## 5. Reflection
@@ -87,11 +90,14 @@ The scheduler considers time, priority, and user preferences. I decided priority
 **a. What went well**
 
 - What part of this project are you most satisfied with?
+  The part of the project I am most satisfied with is the scheduling logic. I added several features that identify keywords in the task name to determine which part of the day a task should be scheduled and I am happy that the results look so natural when a schedule is generated. I am also pleased with the implementation of a overlapping task warning system, which is a feature I had not originally planned for but came up during testing and debugging.
 
 **b. What you would improve**
 
 - If you had another iteration, what would you improve or redesign?
+  If I had another iteration, I would do a complete makeover of the UI. During this project I feel I focused a lot on the back end and scheduling, which is the core of the app. However, The UI is enough to get the job done but I would much prefer to have extended the design to be more user friendly and visually appealing.
 
 **c. Key takeaway**
 
 - What is one important thing you learned about designing systems or working with AI on this project?
+  The most important thing I learned from designing systems and working with AI, is that the design can change drastically during implementation. After looking back att my initial design responses, to where the program is at now, so many changes had been made to improve the project functionality and user experience. This is something I had not anticipated and I feel like it greatly hones my ability to be flexible and adaptable during programming and design. Logic, bugs, and other factors of this project had to be added, removed, revised, continuously drifting farther and farther apart from the original design.

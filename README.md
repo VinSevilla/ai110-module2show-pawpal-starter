@@ -57,13 +57,6 @@ python -m pytest -v
 | `test_detect_conflicts_flags_overlapping_tasks`         | `detect_conflicts()` catches tasks with overlapping time windows                    |
 | `test_detect_conflicts_no_warning_for_sequential_tasks` | Back-to-back tasks (end == next start) are not falsely flagged as conflicts         |
 
-### Confidence Level
-
-4/5
-All the main features I built — scheduling by priority, sorting tasks by time, repeating daily tasks, and catching overlapping tasks — are working and passing their tests. One thing I noticed while testing is that if you manually place two tasks at the exact same time using `add_task_at`, the second one just replaces the first instead of showing a warning. It doesn't break the normal schedule (which handles this automatically), but it's something I'd want to fix in a future version.
-
----
-
 ## Getting started
 
 ### Setup
@@ -83,3 +76,29 @@ pip install -r requirements.txt
 5. Add tests to verify key behaviors.
 6. Connect your logic to the Streamlit UI in `app.py`.
 7. Refine UML so it matches what you actually built.
+
+## Features
+
+- **Priority-based task scheduling** — `generate_schedule()` sorts tasks by priority (1–5, highest first) and greedily places each one into the earliest available 15-minute-aligned slot in the 24-hour day.
+
+- **Chronological schedule display** — `sort_by_time()` returns placed tasks sorted by start minute using a lambda key, so the daily view always renders in time order.
+
+- **Conflict detection** — `detect_conflicts()` runs a pairwise scan over all placed tasks and reports any overlapping time windows as human-readable warning strings.
+
+- **Unplaced task tracking** — `check_conflicts()` returns tasks that could not fit into any free slot after scheduling, surfaced as a separate warning in the UI.
+
+- **Owner time-blocking (constraints)** — `add_constraint()` parses natural 12-hour time strings (e.g. `"9:00am"`) via a regex parser and marks those windows as unavailable before scheduling runs.
+
+- **Daily and weekly task recurrence** — `mark_complete()` on a task with `frequency="daily"` or `"weekly"` automatically creates a next-occurrence task with the appropriate due date offset, queued for the next schedule generation.
+
+- **Intra-day recurring task expansion** — Tasks with `recurring=True` and a `repeat_every` interval are expanded into multiple copies spaced throughout the day before scheduling begins.
+
+- **Pet maintenance scoring** — `update_maintenance_level()` scores each pet 1–5 after schedule generation by counting walks (target: 2), feeds (target: 2), and grooming sessions (+1 bonus, capped at 5).
+
+- **Per-pet and per-status task filtering** — `filter_tasks()` and `filter_tasks_by_pet_name()` allow lookup of placed tasks by pet ID/name and completion status (`"pending"` / `"complete"`).
+
+- **12-hour time string parsing** — `_parse_time()` handles formats like `5pm`, `8:30am`, and `12:00pm` with full AM/PM edge-case handling for midnight and noon.
+
+## 📸 Demo
+
+<a href="/course_images/ai110/Screenshot 2026-03-27 at 11.21.25 AM.png" target="_blank"><img src='/course_images/ai110/Screenshot 2026-03-27 at 11.21.25 AM.png' title='PawPal App' width='' alt='PawPal App' class='center-block' /></a>

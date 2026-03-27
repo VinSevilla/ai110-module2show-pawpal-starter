@@ -1,0 +1,72 @@
+classDiagram
+    direction TB
+
+    class User {
+        +int id
+        +String name
+        +Schedule user_schedule
+        +List~Pet~ user_pets
+        +edit_user_info(name: str)
+        +view_user_info() str
+        +add_pet(pet: Pet)
+        +remove_pet(pet_id: int)
+        +filter_tasks_by_pet_name(pet_name: str, status: str) List~Task~
+        +update_pet_maintenance()
+        +add_constraint(label: str, start_time: str, end_time: str)
+    }
+
+    class Schedule {
+        +int MINUTES_IN_DAY
+        +List~tuple~ blocked_times
+        +List~Task~ tasks
+        +dict _placed
+        +List~Task~ _unplaced
+        +add_task(task: Task)
+        +remove_task(task_name: str)
+        +block_time(start: int, end: int)
+        +generate_schedule() dict
+        +add_task_at(task: Task, time_str: str)
+        +detect_conflicts() List~str~
+        +sort_by_time() List~tuple~
+        +filter_tasks(pet_id: int, status: str) List~Task~
+        +complete_task(task_name: str) Task
+        +check_conflicts() List~Task~
+        +get_tasks_for_pet(pet_id: int) List~Task~
+        +view_schedule()
+        +_parse_time(time_str: str)$ int
+        +_to_time(minutes: int)$ str
+    }
+
+    class Task {
+        +String task_name
+        +int duration
+        +int priority
+        +int pet_id
+        +String status
+        +bool recurring
+        +int repeat_every
+        +String frequency
+        +date due_date
+        +mark_complete() Task
+        +edit_duration(duration: int)
+        +edit_priority(priority: int)
+    }
+
+    class Pet {
+        +int id
+        +String name
+        +String type
+        +int age
+        +int maintenance_level
+        +List~Task~ tasks
+        +task_count() int
+        +add_task(task: Task)
+        +edit_pet_info(name: str, type: str, age: int)
+        +update_maintenance_level(tasks: List~Task~)
+        +view_pet_info() str
+    }
+
+    User "1" --> "1" Schedule : has
+    User "1" --> "0..*" Pet : owns
+    Schedule "1" --> "0..*" Task : contains / places
+    Task "0..*" --> "1" Pet : assigned to

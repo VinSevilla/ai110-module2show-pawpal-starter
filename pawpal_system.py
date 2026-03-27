@@ -37,15 +37,20 @@ class Pet:
         if age is not None:
             self.age = age
 
+    FEED_KEYWORDS = {"feed", "eat", "meal", "food", "breakfast", "lunch", "dinner"}
+
     def update_maintenance_level(self, tasks: List["Task"]):
-        """Score care quality 1–5 based on walks, feeds (target: 2 each), and groom (+1 bonus)."""
-        walks  = sum(1 for t in tasks if "walk"  in t.task_name.lower())
-        feeds  = sum(1 for t in tasks if "feed"  in t.task_name.lower())
+        """Score care quality 1–5: 2 walks + 2 meals = 4/5, grooming adds the 5th point."""
+        walks  = sum(1 for t in tasks if "walk" in t.task_name.lower())
+        feeds  = sum(
+            1 for t in tasks
+            if any(kw in t.task_name.lower() for kw in self.FEED_KEYWORDS)
+        )
         grooms = sum(1 for t in tasks if "groom" in t.task_name.lower())
 
-        # Count only up to the required 2 of each type (total out of 4)
+        # 2 walks + 2 meals = 4/5; grooming pushes to 5/5
         completed = min(walks, 2) + min(feeds, 2)  # 0–4
-        score = max(1, completed)                   # floor of 1
+        score = max(1, completed)
 
         if grooms >= 1:
             score = min(5, score + 1)
@@ -112,15 +117,26 @@ class Task:
 
 class Schedule:
 
-    # Change2: For simplicity, made the schedule operate on a single 24-hour block (12 AM to 12 AM)
-    # Change3: added a parseable time format for the block_time function, so the user can input time in a more 
-    # readable way (e.g. "9:00 AM" instead of 540 minutes).
     MINUTES_IN_DAY = 1440  # 24 hours × 60 minutes
+    MIN_GAP = 120          # minimum minutes between two instances of the same task on the same pet
 
-    def __init__(self):
-        """Initialize an empty 24-hour schedule with no tasks or blocked times."""
+    # Keyword → preferred (start, end) window in minutes from midnight
+    KEYWORD_WINDOWS = {
+        "breakfast": (60,   720),   # 1 AM – 12 PM
+        "morning":   (60,   720),
+        "lunch":     (720,  1080),  # 12 PM – 6 PM
+        "afternoon": (720,  1080),
+        "dinner":    (1080, 1440),  # 6 PM – 12 AM
+        "evening":   (1080, 1440),
+    }
+
+    def __init__(self, day_start: int = 0, day_end: int = 1440):
+        """Initialize an empty schedule bounded by day_start and day_end (minutes from midnight)."""
+        self.day_start: int = day_start
+        self.day_end: int = day_end
         # Each entry is a (start_minute, end_minute) pair representing a blocked range
         self.blocked_times: List[tuple] = []
+        self.blocked_labels: List[str] = []
         self.tasks: List[Task] = []
         # Filled by generate_schedule(): maps start_minute -> Task
         self._placed: dict = {}
@@ -163,14 +179,31 @@ class Schedule:
         self._placed = {k: v for k, v in self._placed.items()
                         if v.task_name != task_name}
 
-    def block_time(self, start: int, end: int):
+    def block_time(self, start: int, end: int, label: str = ""):
         """Mark a time range (in minutes from midnight) as unavailable for scheduling."""
         self.blocked_times.append((start, end))
+        self.blocked_labels.append(label)
+
+    def _preferred_window(self, task: Task):
+        """Return (start, end) minutes for a task based on name keywords, or None if no match."""
+        name = task.task_name.lower()
+        for keyword, window in self.KEYWORD_WINDOWS.items():
+            if keyword in name:
+                return window
+        return None
+
+    def _respects_gap(self, task: Task, start: int) -> bool:
+        """Return True if placing task at start keeps at least MIN_GAP from any same-name/same-pet task."""
+        for placed_start, placed_task in self._placed.items():
+            if placed_task.task_name == task.task_name and placed_task.pet_id == task.pet_id:
+                if abs(start - placed_start) < self.MIN_GAP:
+                    return False
+        return True
 
     def _slot_is_free(self, start: int, duration: int) -> bool:
         """Return True if [start, start+duration) fits inside the day with no conflicts."""
         end = start + duration
-        if end > self.MINUTES_IN_DAY:
+        if end > self.day_end:
             return False
         for b_start, b_end in self.blocked_times:
             if not (end <= b_start or start >= b_end):
@@ -200,16 +233,40 @@ class Schedule:
         return expanded
 
     def generate_schedule(self) -> dict:
-        """Place all tasks into the 24-hour block by priority, avoiding blocked windows."""
+        """Place tasks by priority, respecting keyword time windows and per-pet spacing."""
         self._placed = {}
         self._unplaced = []
         for task in sorted(self._expand_recurring(), key=lambda t: t.priority, reverse=True):
             placed = False
-            for minute in range(0, self.MINUTES_IN_DAY, 15):
-                if self._slot_is_free(minute, task.duration):
-                    self._placed[minute] = task
-                    placed = True
+
+            # Build search order: preferred window first, then full day as fallback
+            preferred = self._preferred_window(task)
+            search_ranges = []
+            if preferred:
+                pref_start = max(preferred[0], self.day_start)
+                pref_end   = min(preferred[1], self.day_end)
+                if pref_start < pref_end:
+                    search_ranges.append(range(pref_start, pref_end, 15))
+            search_ranges.append(range(self.day_start, self.day_end, 15))
+
+            # Pass 1: honor both the keyword window and the spacing gap
+            for search_range in search_ranges:
+                for minute in search_range:
+                    if self._slot_is_free(minute, task.duration) and self._respects_gap(task, minute):
+                        self._placed[minute] = task
+                        placed = True
+                        break
+                if placed:
                     break
+
+            # Pass 2: relax the gap constraint (tasks too close together is better than unplaced)
+            if not placed:
+                for minute in range(self.day_start, self.day_end, 15):
+                    if self._slot_is_free(minute, task.duration):
+                        self._placed[minute] = task
+                        placed = True
+                        break
+
             if not placed:
                 self._unplaced.append(task)
         return dict(sorted(self._placed.items()))
@@ -354,7 +411,17 @@ class User:
             raise ValueError(
                 f"End time '{end_time}' must be after start time '{start_time}'."
             )
-        self.user_schedule.block_time(start_min, end_min)
+        for i, (b_start, b_end) in enumerate(self.user_schedule.blocked_times):
+            if start_min < b_end and end_min > b_start:
+                existing_label = self.user_schedule.blocked_labels[i]
+                raise ValueError(
+                    f"This time block overlaps with existing constraint '{existing_label}' "
+                    f"({Schedule._to_time(b_start)}–{Schedule._to_time(b_end)})."
+                )
+        self.user_schedule.block_time(start_min, end_min, label=label)
+        # Invalidate any existing generated schedule so it must be regenerated
+        self.user_schedule._placed = {}
+        self.user_schedule._unplaced = []
         print(f"Constraint added: '{label}' from {Schedule._to_time(start_min)} "
               f"to {Schedule._to_time(end_min)}")
 
